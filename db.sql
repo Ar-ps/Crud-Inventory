@@ -1,0 +1,26 @@
+CREATE DATABASE IF NOT EXISTS inventory_db;
+USE inventory_db;
+
+CREATE TABLE products (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  kode VARCHAR(20) UNIQUE,
+  nama VARCHAR(100) NOT NULL,
+  kategori VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE materials (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  kode VARCHAR(20) UNIQUE,
+  nama VARCHAR(100) NOT NULL,
+  product_id INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE product_materials (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT,
+  material_id INT,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  FOREIGN KEY (material_id) REFERENCES materials(id) ON DELETE CASCADE
+);
