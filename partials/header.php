@@ -9,6 +9,8 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
 
   <style>
   /* ✅ Navbar Toggler Fix */
@@ -61,6 +63,12 @@
       <li class="nav-item">
         <a class="nav-link px-3 py-2" href="materials.php">
           <i class="fas fa-warehouse me-1 text-emerald-400"></i> Semua Bahan
+        </a>
+      </li>
+      <!-- ✅ Tombol Logout -->
+      <li class="nav-item">
+        <a class="btn btn-danger px-3 py-2 fw-semibold shadow-sm rounded-lg d-flex align-items-center gap-2" href="logout.php" onclick="return confirm('Yakin ingin logout?')">
+          <i class="fas fa-sign-out-alt"></i> Logout
         </a>
       </li>
     </ul>

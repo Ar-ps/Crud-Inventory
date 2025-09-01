@@ -1,4 +1,10 @@
 <?php 
+session_start();
+if (!isset($_SESSION['user_id'])) {
+  header("Location: login.php");
+  exit;
+}
+
 include 'partials/header.php'; 
 include 'config.php'; 
 
@@ -6,13 +12,27 @@ $productId = $_GET['product_id'] ?? null;
 $product   = null;
 $materials = [];
 
+// ==== Flash Message ====
+$flash_success = $_SESSION['flash_success'] ?? null;
+$flash_error   = $_SESSION['flash_error'] ?? null;
+unset($_SESSION['flash_success'], $_SESSION['flash_error']);
+
 // --- Pagination fixed 10 per page --- //
 $limit  = 10;
 $page   = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 if ($page < 1) $page = 1;
 $offset = ($page - 1) * $limit;
 
-// Hitung total bahan (semua / per produk)
+// ==== Sorting ====
+$validSorts = ['kode','nama','jumlah','satuan','created_at','produk_nama']; 
+$sort = $_GET['sort'] ?? 'id'; // default by id
+$order = strtolower($_GET['order'] ?? 'desc'); 
+$order = ($order === 'asc') ? 'ASC' : 'DESC';
+if (!in_array($sort, $validSorts) && $sort !== 'id') {
+  $sort = 'id';
+}
+
+// Hitung total bahan
 if ($productId) {
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM materials WHERE product_id=?");
     $stmt->execute([$productId]);
@@ -21,25 +41,58 @@ if ($productId) {
     $countMaterials = $pdo->query("SELECT COUNT(*) FROM materials")->fetchColumn();
 }
 
-// --- Ambil data bahan dengan LIMIT & OFFSET ---
+// --- Ambil data bahan dengan LIMIT & OFFSET + SORT ---
 if ($productId) {
-    $stmt = $pdo->prepare("SELECT * FROM materials WHERE product_id=? ORDER BY id DESC LIMIT $limit OFFSET $offset");
+    $stmt = $pdo->prepare("SELECT * FROM materials WHERE product_id=? ORDER BY $sort $order LIMIT $limit OFFSET $offset");
     $stmt->execute([$productId]);
     $materials = $stmt->fetchAll();
 
-    // Ambil detail produk
-    $stmt = $pdo->prepare("SELECT * FROM products WHERE id=?");
+    // Detail produk
+    $stmt = $pdo->prepare("
+          SELECT p.*, c.nama AS kategori
+          FROM products p
+          LEFT JOIN categories c ON p.kategori_id = c.id
+          WHERE p.id=?");
     $stmt->execute([$productId]);
     $product = $stmt->fetch();
 } else {
     $stmt = $pdo->query("SELECT m.*, p.nama as produk_nama 
                          FROM materials m 
                          LEFT JOIN products p ON m.product_id=p.id 
-                         ORDER BY m.id DESC 
+                         ORDER BY $sort $order 
                          LIMIT $limit OFFSET $offset");
     $materials = $stmt->fetchAll();
 }
 ?>
+<!-- ✅ CDN SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<?php if ($flash_success): ?>
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    Swal.fire({
+      icon: 'success',
+      title: 'Berhasil',
+      text: '<?= addslashes($flash_success) ?>',
+      showConfirmButton: false,
+      timer: 2000
+    });
+  });
+</script>
+<?php endif; ?>
+
+<?php if ($flash_error): ?>
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    Swal.fire({
+      icon: 'error',
+      title: 'Peringatan',
+      text: '<?= addslashes($flash_error) ?>',
+      confirmButtonColor: '#d33'
+    });
+  });
+</script>
+<?php endif; ?>
 
 <div class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-800 px-4 py-8">
   
@@ -102,7 +155,7 @@ if ($productId) {
       <div class="row">
         <div class="col-md-4"><strong>Kode:</strong> <?= htmlspecialchars($product['kode']) ?></div>
         <div class="col-md-4"><strong>Nama:</strong> <?= htmlspecialchars($product['nama']) ?></div>
-        <div class="col-md-4"><strong>Kategori:</strong> <?= htmlspecialchars($product['kategori']) ?></div>
+        <div class="col-md-4"><strong>Kategori:</strong> <?= htmlspecialchars($product['kategori'] ?? '—') ?></div>
       </div>
     </div>
   <?php endif; ?>
@@ -117,6 +170,7 @@ if ($productId) {
             <?= $product ? 'Daftar Bahan untuk Produk' : 'Katalog Semua Bahan Baku' ?>
           </h3>
         </div>
+        
         <div class="col-md-6">
           <div class="input-group">
             <span class="input-group-text bg-slate-700 border-slate-600 text-slate-300">
@@ -136,14 +190,45 @@ if ($productId) {
         <thead>
           <tr style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
             <th class="text-cyan-300 fw-semibold py-3 px-4 text-center">No</th>
-            <th class="text-cyan-300 fw-semibold py-3 px-4">Kode</th>
-            <th class="text-cyan-300 fw-semibold py-3 px-4">Nama Bahan</th>
-            <th class="text-cyan-300 fw-semibold py-3 px-4 text-center">Jumlah</th> 
-            <th class="text-cyan-300 fw-semibold py-3 px-4 text-center">Satuan</th> 
+
+            <th class="text-cyan-300 fw-semibold py-3 px-4">
+              <a href="?<?= $productId ? 'product_id='.$productId.'&' : '' ?>sort=kode&order=<?= ($sort==='kode' && $order==='ASC')?'desc':'asc' ?>" class="text-cyan-300 text-decoration-none">
+                Kode <?= ($sort==='kode')?($order==='ASC'?'⬆️':'⬇️'):'' ?>
+              </a>
+            </th>
+
+            <th class="text-cyan-300 fw-semibold py-3 px-4">
+              <a href="?<?= $productId ? 'product_id='.$productId.'&' : '' ?>sort=nama&order=<?= ($sort==='nama' && $order==='ASC')?'desc':'asc' ?>" class="text-cyan-300 text-decoration-none">
+                Nama Bahan <?= ($sort==='nama')?($order==='ASC'?'⬆️':'⬇️'):'' ?>
+              </a>
+            </th>
+
+            <th class="text-cyan-300 fw-semibold py-3 px-4 text-center">
+              <a href="?<?= $productId ? 'product_id='.$productId.'&' : '' ?>sort=jumlah&order=<?= ($sort==='jumlah' && $order==='ASC')?'desc':'asc' ?>" class="text-cyan-300 text-decoration-none">
+                Jumlah <?= ($sort==='jumlah')?($order==='ASC'?'⬆️':'⬇️'):'' ?>
+              </a>
+            </th>
+
+            <th class="text-cyan-300 fw-semibold py-3 px-4 text-center">
+              <a href="?<?= $productId ? 'product_id='.$productId.'&' : '' ?>sort=satuan&order=<?= ($sort==='satuan' && $order==='ASC')?'desc':'asc' ?>" class="text-cyan-300 text-decoration-none">
+                Satuan <?= ($sort==='satuan')?($order==='ASC'?'⬆️':'⬇️'):'' ?>
+              </a>
+            </th>
+
             <?php if (!$product): ?>
-              <th class="text-cyan-300 fw-semibold py-3 px-4">Produk</th>
+              <th class="text-cyan-300 fw-semibold py-3 px-4">
+                <a href="?sort=produk_nama&order=<?= ($sort==='produk_nama' && $order==='ASC')?'desc':'asc' ?>" class="text-cyan-300 text-decoration-none">
+                  Produk <?= ($sort==='produk_nama')?($order==='ASC'?'⬆️':'⬇️'):'' ?>
+                </a>
+              </th>
             <?php endif; ?>
-            <th class="text-cyan-300 fw-semibold py-3 px-4 text-center">Waktu Pembuatan</th>
+
+            <th class="text-cyan-300 fw-semibold py-3 px-4 text-center">
+              <a href="?<?= $productId ? 'product_id='.$productId.'&' : '' ?>sort=created_at&order=<?= ($sort==='created_at' && $order==='ASC')?'desc':'asc' ?>" class="text-cyan-300 text-decoration-none">
+                Waktu Pembuatan <?= ($sort==='created_at')?($order==='ASC'?'⬆️':'⬇️'):'' ?>
+              </a>
+            </th>
+
             <th class="text-cyan-300 fw-semibold py-3 px-4 text-center">Aksi</th>
           </tr>
         </thead>
@@ -212,7 +297,7 @@ if ($productId) {
           <?php for ($i=1; $i <= $totalPages; $i++): ?>
             <li class="page-item <?= $i==$page?'active':'' ?>">
               <a class="page-link bg-slate-800 border-0 text-white fw-semibold px-3 py-1 rounded-pill" 
-                 href="?<?= $productId ? 'product_id='.$productId.'&' : '' ?>page=<?= $i ?>">
+                 href="?<?= $productId ? 'product_id='.$productId.'&' : '' ?>page=<?= $i ?>&sort=<?= $sort ?>&order=<?= strtolower($order) ?>">
                 <?= $i ?>
               </a>
             </li>

@@ -1,17 +1,22 @@
 <?php
+session_start();
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit;
+}
 include 'config.php';
 
-$id = $_GET['id'] ?? 0;
-$productId = $_GET['product_id'] ?? null; // tangkap product_id dari query string
+$id        = $_GET['id'] ?? null;
+$productId = $_GET['product_id'] ?? null;
 
-// hapus data bahan
-$stmt = $pdo->prepare("DELETE FROM materials WHERE id=?");
-$stmt->execute([$id]);
+if ($id) {
+    $stmt = $pdo->prepare("DELETE FROM materials WHERE id=?");
+    $stmt->execute([$id]);
 
-// redirect kembali
-if ($productId) {
-    header("Location: materials.php?product_id=" . $productId);
+    $_SESSION['flash_success'] = "Bahan berhasil dihapus.";
 } else {
-    header("Location: materials.php");
+    $_SESSION['flash_error'] = "Gagal menghapus bahan.";
 }
+
+header("Location: materials.php?product_id=$productId");
 exit;

@@ -1,84 +1,129 @@
 <?php
+session_start();
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit;
+}
+
 include 'config.php';
 
-$id       = $_POST['id'] ?? null;
-$kode     = $_POST['kode'] ?? null;
-$nama     = trim($_POST['nama'] ?? '');
-$kategori = trim($_POST['kategori'] ?? '');
+// deteksi apakah input dari JSON (API Postman) atau dari form HTML
+$input = file_get_contents("php://input");
+$data = json_decode($input, true);
 
-// Validasi input dasar
-if (empty($nama) || empty($kategori)) {
-    die("❌ Error: Nama dan kategori wajib diisi.");
+if ($data) {
+    $id         = $data['id'] ?? null;
+    $kode       = $data['kode'] ?? null;
+    $nama       = trim($data['nama'] ?? '');
+    $kategoriId = $data['kategori_id'] ?? null;
+} else {
+    $id         = $_POST['id'] ?? null;
+    $kode       = $_POST['kode'] ?? null;
+    $nama       = trim($_POST['nama'] ?? '');
+    $kategoriId = $_POST['kategori_id'] ?? null;
 }
 
-if ($id) {
-    // === UPDATE PRODUK ===
-    if (empty($kode)) {
-        $stmt = $pdo->prepare("SELECT kode FROM products WHERE id=?");
-        $stmt->execute([$id]);
-        $kode = $stmt->fetchColumn();
+// simpan input terakhir agar form tidak terhapus jika error
+$_SESSION['old_input'] = [
+    "id"          => $id,
+    "kode"        => $kode,
+    "nama"        => $nama,
+    "kategori_id" => $kategoriId
+];
+
+// validasi input dasar
+if (empty($nama) || empty($kategoriId)) {
+    $msg = "❌ Nama dan kategori wajib diisi!";
+    if ($data) {
+        header('Content-Type: application/json');
+        echo json_encode(["error" => $msg]);
+    } else {
+        $_SESSION['flash_error'] = $msg;
+        $redirect = $id ? "product_form.php?id=".$id : "product_form.php";
+        header("Location: $redirect");
     }
+    exit;
+}
 
-    $stmt = $pdo->prepare("UPDATE products 
-                           SET kode=?, nama=?, kategori=? 
-                           WHERE id=?");
-    $stmt->execute([$kode, $nama, $kategori, $id]);
-
-} else {
-    // === INSERT PRODUK BARU ===
-    $words = preg_split('/\s+/', $nama);
-    $prefix = '';
-
-    if (count($words) == 1) {
-        // Jika hanya 1 kata → ambil huruf pertama, tengah, terakhir
-        $word = strtoupper($words[0]);
-        $len  = strlen($word);
-
-        if ($len >= 3) {
-            $first  = $word[0];
-            $middle = $word[(int)floor($len/2)];
-            $last   = $word[$len-1];
-            $prefix = $first.$middle.$last;
-        } else {
-            // Jika terlalu pendek, ambil semua huruf lalu pad dengan X
-            $prefix = str_pad($word, 3, 'X');
+try {
+    if ($id) {
+        // === UPDATE ===
+        if (empty($kode)) {
+            $stmt = $pdo->prepare("SELECT kode FROM products WHERE id=?");
+            $stmt->execute([$id]);
+            $kode = $stmt->fetchColumn();
         }
 
-    } elseif (count($words) == 2) {
-        // Jika 2 kata → ambil huruf pertama dari tiap kata
-        $prefix = strtoupper(substr($words[0], 0, 1) . substr($words[1], 0, 1));
+        // cek duplikat kode
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM products WHERE kode=? AND id<>?");
+        $stmt->execute([$kode, $id]);
+        if ($stmt->fetchColumn() > 0) {
+            throw new Exception("⚠️ Kode $kode sudah digunakan produk lain!");
+        }
 
-    } elseif (count($words) >= 3) {
-        // Jika 3 kata → ambil huruf depan tiap kata (maks 3 huruf)
-        $prefix = strtoupper(substr($words[0], 0, 1) .
-                             substr($words[1], 0, 1) .
-                             substr($words[2], 0, 1));
-    }
+        $stmt = $pdo->prepare("UPDATE products SET kode=?, nama=?, kategori_id=? WHERE id=?");
+        $stmt->execute([$kode, $nama, $kategoriId, $id]);
 
-    // Cari kode terakhir dengan prefix sama
-    $stmt = $pdo->prepare("SELECT kode 
-                           FROM products 
-                           WHERE kode LIKE ? 
-                           ORDER BY id DESC 
-                           LIMIT 1");
-    $stmt->execute([$prefix . '%']);
-    $lastKode = $stmt->fetchColumn();
+        unset($_SESSION['old_input']);
+        $msg = "Produk berhasil diupdate";
 
-    if ($lastKode) {
-        $lastNum = (int)substr($lastKode, strlen($prefix));
-        $nextNum = $lastNum + 1;
     } else {
-        $nextNum = 1;
+        // === INSERT BARU ===
+        // ambil kode kategori (2 digit)
+        $stmt = $pdo->prepare("SELECT kode FROM categories WHERE id=?");
+        $stmt->execute([$kategoriId]);
+        $kategoriKode = $stmt->fetchColumn();
+
+        if (!$kategoriKode) {
+            throw new Exception("❌ Kategori dengan ID $kategoriId tidak ditemukan!");
+        }
+
+        // ambil kode produk terakhir di kategori ini
+        $stmt = $pdo->prepare("SELECT kode FROM products WHERE kategori_id=? ORDER BY id DESC LIMIT 1");
+        $stmt->execute([$kategoriId]);
+        $lastKode = $stmt->fetchColumn();
+
+        if ($lastKode) {
+            // ambil 4 digit terakhir
+            $lastNum = (int)substr($lastKode, 2);
+            $nextNum = $lastNum + 1;
+        } else {
+            $nextNum = 1;
+        }
+
+        // format kode produk: <kodeKategori><4digit>
+        $kode = $kategoriKode . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
+
+        // cek duplikat kode
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM products WHERE kode=?");
+        $stmt->execute([$kode]);
+        if ($stmt->fetchColumn() > 0) {
+            throw new Exception("⚠️ Kode $kode sudah ada, coba lagi!");
+        }
+
+        $stmt = $pdo->prepare("INSERT INTO products (kode, nama, kategori_id, created_at) VALUES (?,?,?,NOW())");
+        $stmt->execute([$kode, $nama, $kategoriId]);
+
+        unset($_SESSION['old_input']);
+        $msg = "Produk berhasil ditambahkan";
     }
 
-    $kode = $prefix . str_pad($nextNum, 3, '0', STR_PAD_LEFT);
+    // respon
+    if ($data) {
+        header('Content-Type: application/json');
+        echo json_encode(["status" => "success", "message" => $msg, "kode" => $kode]);
+    } else {
+        $_SESSION['flash_success'] = $msg;
+        header("Location: index.php");
+    }
 
-    // Simpan produk baru
-    $stmt = $pdo->prepare("INSERT INTO products (kode, nama, kategori) 
-                           VALUES (?,?,?)");
-    $stmt->execute([$kode, $nama, $kategori]);
+} catch (Exception $e) {
+    if ($data) {
+        header('Content-Type: application/json');
+        echo json_encode(["error" => $e->getMessage()]);
+    } else {
+        $_SESSION['flash_error'] = $e->getMessage();
+        $redirect = $id ? "product_form.php?id=".$id : "product_form.php";
+        header("Location: $redirect");
+    }
 }
-
-// Kembali ke halaman index produk
-header("Location: index.php");
-exit;

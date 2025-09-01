@@ -1,6 +1,17 @@
 <?php 
+session_start();
+if (!isset($_SESSION['user_id'])) {
+  header("Location: login.php");
+  exit;
+}
+
 include 'partials/header.php'; 
 include 'config.php'; 
+
+// ==== Flash Message ====
+$flash_success = $_SESSION['flash_success'] ?? null;
+$flash_error   = $_SESSION['flash_error'] ?? null;
+unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
 // --- Pagination fixed 10 per page --- //
 $limit  = 10;
@@ -8,18 +19,60 @@ $page   = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 if ($page < 1) $page = 1;
 $offset = ($page - 1) * $limit;
 
+// ==== Sorting ====
+$validSorts = ['kode','kategori','nama','created_at']; // kolom yg boleh diurut
+$sort = $_GET['sort'] ?? 'id'; // default by id
+$order = strtolower($_GET['order'] ?? 'desc'); 
+$order = ($order === 'asc') ? 'ASC' : 'DESC';
+
+if (!in_array($sort, $validSorts) && $sort !== 'id') {
+  $sort = 'id';
+}
+
 // Hitung total produk
 $countProducts = $pdo->query("SELECT COUNT(*) FROM products")->fetchColumn();
 
 // Ambil data produk dengan limit & offset
-$stmt = $pdo->prepare("SELECT * FROM products ORDER BY id DESC LIMIT $limit OFFSET $offset");
+$stmt = $pdo->prepare("
+  SELECT p.*, c.nama AS kategori
+  FROM products p
+  LEFT JOIN categories c ON p.kategori_id = c.id
+  ORDER BY $sort $order
+  LIMIT $limit OFFSET $offset
+");
 $stmt->execute();
 $products = $stmt->fetchAll();
 ?>
 
 <div class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-800">
-  <!-- Hero Header Section -->
   <div class="container-fluid px-4 pt-8 pb-6">
+
+    <!-- ✅ SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <?php if ($flash_success): ?>
+    <script>
+      Swal.fire({
+        icon: 'success',
+        title: 'Berhasil',
+        text: '<?= addslashes($flash_success) ?>',
+        showConfirmButton: false,
+        timer: 2000
+      });
+    </script>
+    <?php endif; ?>
+
+    <?php if ($flash_error): ?>
+    <script>
+      Swal.fire({
+        icon: 'error',
+        title: 'Peringatan',
+        text: '<?= addslashes($flash_error) ?>',
+        confirmButtonColor: '#d33'
+      });
+    </script>
+    <?php endif; ?>
+
+    <!-- Header -->
     <div class="row align-items-center">
       <div class="col-lg-8">
         <div class="d-flex align-items-center mb-3">
@@ -65,13 +118,14 @@ $products = $stmt->fetchAll();
   <!-- Main Content -->
   <div class="container-fluid px-4 pb-8">
     <div class="card border-0 shadow-2xl bg-white/10 backdrop-blur-lg rounded-4 overflow-hidden">
+
       <!-- Card Header -->
       <div class="card-header border-0 py-4" style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%);">
         <div class="row align-items-center">
           <div class="col-md-6">
             <h3 class="text-white mb-0 fw-bold d-flex align-items-center">
-              <i class="fas fa-inventory text-cyan-400 me-3"></i>
-              Katalog Produk Premium
+              <i class="fas fa-list text-cyan-400 me-3"></i>
+              Katalog Produk
             </h3>
           </div>
           <div class="col-md-6">
@@ -93,12 +147,33 @@ $products = $stmt->fetchAll();
         <table class="table table-dark table-hover align-middle mb-0" style="background: rgba(15, 23, 42, 0.9);">
           <thead>
             <tr style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
-              <th class="text-center text-cyan-300 fw-semibold py-3 px-2" style="width:5%">No</th>
-              <th class="text-center text-cyan-300 fw-semibold py-3 px-4" style="width:15%">Kode Produk</th>
-              <th class="text-start text-cyan-300 fw-semibold py-3 px-2" style="width:25%">Nama Produk</th>
-              <th class="text-start text-cyan-300 fw-semibold py-3 px-4" style="width:15%">Kategori</th>
-              <th class="text-center text-cyan-300 fw-semibold py-3 px-4" style="width:15%">Waktu Pembuatan</th>
-              <th class="text-center text-cyan-300 fw-semibold py-3 px-4" style="width:25%">Manajemen</th>
+              <th class="text-center text-cyan-300 fw-semibold py-3 px-2">No</th>
+
+              <th class="text-center text-cyan-300 fw-semibold py-3 px-4">
+                <a href="?sort=kode&order=<?= ($sort==='kode' && $order==='ASC')?'desc':'asc' ?>" class="text-cyan-300 text-decoration-none">
+                  Kode Produk <?= ($sort==='kode')?($order==='ASC'?'⬆️':'⬇️'):'' ?>
+                </a>
+              </th>
+
+              <th class="text-start text-cyan-300 fw-semibold py-3 px-2">
+                <a href="?sort=nama&order=<?= ($sort==='nama' && $order==='ASC')?'desc':'asc' ?>" class="text-cyan-300 text-decoration-none">
+                  Nama Produk <?= ($sort==='nama')?($order==='ASC'?'⬆️':'⬇️'):'' ?>
+                </a>
+              </th>
+
+              <th class="text-start text-cyan-300 fw-semibold py-3 px-4">
+                <a href="?sort=kategori&order=<?= ($sort==='kategori' && $order==='ASC')?'desc':'asc' ?>" class="text-cyan-300 text-decoration-none">
+                  Kategori <?= ($sort==='kategori')?($order==='ASC'?'⬆️':'⬇️'):'' ?>
+                </a>
+              </th>
+
+              <th class="text-center text-cyan-300 fw-semibold py-3 px-4">
+                <a href="?sort=created_at&order=<?= ($sort==='created_at' && $order==='ASC')?'desc':'asc' ?>" class="text-cyan-300 text-decoration-none">
+                  Waktu Pembuatan <?= ($sort==='created_at')?($order==='ASC'?'⬆️':'⬇️'):'' ?>
+                </a>
+              </th>
+
+              <th class="text-center text-cyan-300 fw-semibold py-3 px-4">Manajemen</th>
             </tr>
           </thead>
           <tbody id="productTableBody">
@@ -112,17 +187,14 @@ $products = $stmt->fetchAll();
               foreach($products as $row): 
             ?>
             <tr class="hover:bg-slate-800/50 transition-all duration-300 product-row border-slate-700">
-              <!-- No -->
               <td class="text-center text-slate-200 fw-bold"><?= $no++ ?></td>
 
-              <!-- Kode Produk -->
               <td class="text-center">
                 <span class="badge bg-secondary fs-6 px-3 py-2 rounded-pill shadow-sm">
                   <?= htmlspecialchars($row['kode']) ?>
                 </span>
               </td>
 
-              <!-- Nama Produk -->
               <td>
                 <div class="product-name">
                   <h6 class="text-white fw-semibold mb-1"><?= htmlspecialchars($row['nama']) ?></h6>
@@ -130,15 +202,13 @@ $products = $stmt->fetchAll();
                 </div>
               </td>
 
-              <!-- Kategori -->
               <td>
                 <span class="badge bg-gradient-to-r from-pink-500 to-rose-500 px-3 py-2 rounded-pill shadow-sm text-white">
                   <i class="fas fa-folder-open me-1"></i>
-                  <?= htmlspecialchars($row['kategori']) ?>
+                  <?= htmlspecialchars($row['kategori'] ?? '—') ?>
                 </span>
               </td>
 
-              <!-- Waktu Pembuatan -->
               <td class="text-center">
                 <div class="product-time">
                   <h6 class="text-white fw-semibold mb-1">
@@ -150,7 +220,6 @@ $products = $stmt->fetchAll();
                 </div>
               </td>
 
-              <!-- Manajemen -->
               <td class="text-center">
                 <div class="btn-group shadow-lg" role="group">
                   <a href="product_form.php?id=<?= $row['id'] ?>" 
@@ -187,7 +256,8 @@ $products = $stmt->fetchAll();
           <ul class="pagination pagination-lg mb-0">
             <?php for ($i=1; $i <= $totalPages; $i++): ?>
               <li class="page-item <?= $i==$page?'active':'' ?>">
-                <a class="page-link bg-slate-800 border-0 text-white fw-semibold px-3 py-1 rounded-pill" href="?page=<?= $i ?>">
+                <a class="page-link bg-slate-800 border-0 text-white fw-semibold px-3 py-1 rounded-pill" 
+                   href="?page=<?= $i ?>&sort=<?= $sort ?>&order=<?= strtolower($order) ?>">
                   <?= $i ?>
                 </a>
               </li>
