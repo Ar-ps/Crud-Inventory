@@ -8,7 +8,7 @@ $jumlah    = (int)($_POST['jumlah'] ?? 0);
 $satuan    = trim($_POST['satuan'] ?? '');   // ✅ ambil satuan
 $productId = $_POST['product_id'] ?? null;
 
-// Validasi wajib
+// === Validasi dasar ===
 if (!$productId) {
     die("❌ Error: product_id wajib diisi.");
 }
@@ -16,7 +16,7 @@ if (empty($nama) || empty($satuan)) {
     die("❌ Error: Nama dan satuan wajib diisi.");
 }
 
-// Validasi product_id ada di tabel products
+// Pastikan product_id valid
 $check = $pdo->prepare("SELECT COUNT(*) FROM products WHERE id=?");
 $check->execute([$productId]);
 if ($check->fetchColumn() == 0) {
@@ -24,7 +24,7 @@ if ($check->fetchColumn() == 0) {
 }
 
 if ($id) {
-    // === UPDATE material ===
+    // === UPDATE MATERIAL ===
     if (empty($kode)) {
         $stmt = $pdo->prepare("SELECT kode FROM materials WHERE id=?");
         $stmt->execute([$id]);
@@ -37,31 +37,43 @@ if ($id) {
     $stmt->execute([$kode, $nama, $jumlah, $satuan, $productId, $id]);
 
 } else {
-    // === INSERT material baru ===
-    // Buat prefix singkatan dari nama bahan
+    // === INSERT MATERIAL BARU ===
+    $words  = preg_split('/\s+/', $nama);
     $prefix = '';
-    if (!empty($nama)) {
-        $words = preg_split('/\s+/', $nama);
-        if (count($words) == 1) {
-            $prefix = strtoupper(substr($words[0], 0, 3));
+
+    if (count($words) == 1) {
+        // Jika hanya 1 kata → ambil huruf pertama, tengah, terakhir
+        $word = strtoupper($words[0]);
+        $len  = strlen($word);
+
+        if ($len >= 3) {
+            $first  = $word[0];
+            $middle = $word[(int)floor($len/2)];
+            $last   = $word[$len-1];
+            $prefix = $first.$middle.$last;
         } else {
-            foreach ($words as $w) {
-                if (!empty($w)) {
-                    $prefix .= strtoupper(substr($w, 0, 1));
-                }
-            }
-            $prefix = substr($prefix, 0, 3);
+            $prefix = str_pad($word, 3, 'X'); // isi "X" jika terlalu pendek
         }
+
+    } elseif (count($words) == 2) {
+        // Jika 2 kata → ambil huruf depan tiap kata
+        $prefix = strtoupper(substr($words[0], 0, 1) . substr($words[1], 0, 1));
+
+    } elseif (count($words) >= 3) {
+        // Jika 3 kata → ambil huruf depan 3 kata pertama
+        $prefix = strtoupper(substr($words[0], 0, 1) .
+                             substr($words[1], 0, 1) .
+                             substr($words[2], 0, 1));
     } else {
-        $prefix = "MAT"; // default
+        $prefix = "MAT"; // fallback default
     }
 
     // Cari kode terakhir dengan prefix sama
     $stmt = $pdo->prepare("SELECT kode 
-                            FROM materials 
-                            WHERE kode LIKE ? 
-                            ORDER BY id DESC 
-                            LIMIT 1");
+                           FROM materials 
+                           WHERE kode LIKE ? 
+                           ORDER BY id DESC 
+                           LIMIT 1");
     $stmt->execute([$prefix . '%']);
     $lastKode = $stmt->fetchColumn();
 
@@ -74,11 +86,12 @@ if ($id) {
 
     $kode = $prefix . str_pad($nextNum, 3, '0', STR_PAD_LEFT);
 
-    // Simpan data baru dengan satuan
+    // Simpan data baru
     $stmt = $pdo->prepare("INSERT INTO materials (kode, nama, jumlah, satuan, product_id) 
                            VALUES (?,?,?,?,?)");
     $stmt->execute([$kode, $nama, $jumlah, $satuan, $productId]);
 }
 
+// Redirect kembali ke halaman materials produk terkait
 header("Location: materials.php?product_id=" . $productId);
 exit;
