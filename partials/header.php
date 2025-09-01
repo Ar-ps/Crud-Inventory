@@ -65,6 +65,12 @@
           <i class="fas fa-warehouse me-1 text-emerald-400"></i> Semua Bahan
         </a>
       </li>
+      <!-- ✅ Account Setting -->
+      <li class="nav-item">
+        <a class="nav-link px-3 py-2" href="acount.php">
+          <i class="fas fa-user-cog me-1 text-cyan-400"></i> Account Setting
+        </a>
+      </li>
       <!-- ✅ Tombol Logout -->
       <li class="nav-item">
         <a class="btn btn-danger px-3 py-2 fw-semibold shadow-sm rounded-lg d-flex align-items-center gap-2" href="logout.php" onclick="return confirm('Yakin ingin logout?')">
